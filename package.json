@@ -1,0 +1,24 @@
+{
+  "name": "scrcpytray",
+  "version": "1.0.0",
+  "description": "scrcpy的托盘版本",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "make": "electron-forge make"
+  },
+  "keywords": [
+    "scrcpy"
+  ],
+  "author": "B",
+  "license": "MIT",
+  "dependencies": {
+    "iconv-lite": "^0.6.3",
+    "js-yaml": "^4.1.0"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "^7.4.0",
+    "@electron-forge/maker-squirrel": "^7.4.0",
+    "electron": "^32.0.1"
+  }
+}
