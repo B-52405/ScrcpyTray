@@ -6,7 +6,7 @@ async function read_yaml(file_path) {
     try {
         const content = await fs.readFile(file_path, 'utf8');
         const data = yaml.load(content)
-        if(data === undefined){
+        if (data === undefined) {
             return {}
         }
         return data

@@ -1,13 +1,16 @@
 const { exec } = require('child_process');
 const { promisify } = require('util');
 const iconv = require('iconv-lite');
+const { Logger } = require('./log.js');
 
 
 const exec_promise = promisify(exec)
+const logger = new Logger("command.js")
 
 
-async function run_command(command, encoding = "gbk"){
+async function command(command, encoding = "gbk") {
     try {
+        logger.log(`command: ${command}`)
         const { stdout, stderr } = await exec_promise(command, { encoding: 'buffer' })
         if (stdout) {
             return iconv.decode(stdout, encoding)
@@ -19,15 +22,6 @@ async function run_command(command, encoding = "gbk"){
 }
 
 
-async function sleep(time){
-    await new Promise(resolve => {
-        setTimeout(resolve, time)
-    })
-}
-
-
 module.exports = {
-    run_command,
-    sleep
+    command
 }
-
