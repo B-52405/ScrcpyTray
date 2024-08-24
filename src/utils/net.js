@@ -50,7 +50,7 @@ function stderr_hanler(data) {
 
 
 async function connect(net) {
-    logger.log("connecting...")
+    logger.log(`connecting to ${net.id}.`)
 
     if (scrcpy !== undefined) {
         scrcpy.stderr.off('data', stderr_hanler)

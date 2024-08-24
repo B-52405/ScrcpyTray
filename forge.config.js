@@ -1,14 +1,14 @@
+const path = require('path');
+
+
 module.exports = {
-    packagerConfig: {},
+    packagerConfig: {
+        icon: path.join(__dirname, "assets", "icon")
+    },
     makers: [
         {
-            name: '@electron-forge/maker-squirrel',
-            config: {
-                name: "ScrcpyTray",
-                authors: "B",
-                exe: "scrcpytray.exe",
-                noMsi: true
-            }
+            name: '@electron-forge/maker-zip',
+            platforms: ['win32']
         }
     ]
 }

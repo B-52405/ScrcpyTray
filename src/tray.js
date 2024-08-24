@@ -71,9 +71,6 @@ async function create_tray() {
     tray.setToolTip("ScrcpyTray")
     const nets = await find_nets()
     const config = await config_setter()
-    if (nets.length > 0) {
-        net_selected = nets[0]
-    }
 
     function menu_config(id) {
         return {
@@ -137,6 +134,15 @@ async function create_tray() {
     menu.config.video = menu_config("video")
     menu.config.audio = menu_config("audio")
     menu.config.control = menu_config("control")
+
+    for (const net of nets) {
+        net_selected = net
+        const connected = await try_connect()
+        if (connected) {
+            menu.nets[net.index].checked = true
+            break
+        }
+    }
     set_context_menu()
 
     tray.on("double-click", async () => {
@@ -144,8 +150,6 @@ async function create_tray() {
         app.relaunch()
         app.exit(0)
     })
-
-    await try_connect()
 }
 
 
