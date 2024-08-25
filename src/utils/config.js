@@ -15,7 +15,7 @@ class Config {
     }
 
     args(ip) {
-        let args = ` --tcpip=${ip}`
+        let args = ` --window-title="ScrcpyTray" --tcpip=${ip}`
         if (!this.video) {
             args += " --no-video --no-window"
         }
