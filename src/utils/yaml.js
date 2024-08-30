@@ -13,6 +13,7 @@ async function read_yaml(file_path) {
     } catch (error) {
         const data = {}
         await write_yaml(file_path, data)
+        return data
     }
 }
 

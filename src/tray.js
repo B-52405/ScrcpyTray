@@ -1,34 +1,39 @@
 const { Tray, Menu, app } = require("electron");
 const path = require("path");
-const { config_setter } = require("./utils/config.js");
-const { find_nets, connect, disconnect } = require("./utils/net.js");
+const { configuration } = require("./utils/config.js");
+const { connect, disconnect, controller } = require("./utils/connect.js");
+const { discover_nets, discover_devices_usb, discover_devices, adb_tcpip } = require("./utils/discover.js");
 const { Logger } = require("./utils/log.js");
+const { sleep } = require("./utils/sleep.js");
 
 
 const assets_path = path.join(__dirname, "..", "assets")
 let net_selected = undefined
-const menu = {
-    connect: undefined,
-    nets: [],
-    config: {
-        video: undefined,
-        audio: undefined,
-        control: undefined
-    }
-}
-const config_id = {
+let net_selected_index = 0
+let device_selected = undefined
+let device_selected_index = 0
+let tray = undefined
+const config_items = ["video", "audio", "buffer"]
+const config_labels = {
     video: "视频",
     audio: "音频",
-    control: "控制"
+    buffer: "缓冲"
 }
-let tray = undefined
-const connect_label = {
+const connect_labels = {
     disconnect: "未连接",
     connecting: "连接中",
     connected: "已连接"
 }
-let retry = false
-let retry_resolver = () => { }
+const menu = {
+    connect: undefined,
+    nets: [],
+    devices: [],
+    config: {},
+    actions: []
+}
+let reconnect = false
+const reconnect_resolves = []
+const reconnect_interval = 1000
 const logger = new Logger("tray.js")
 
 
@@ -37,9 +42,11 @@ function set_context_menu() {
     menu_items.push({ type: "separator" })
     menu.nets.map((net) => { menu_items.push(net) })
     menu_items.push({ type: "separator" })
-    menu_items.push(menu.config.video)
-    menu_items.push(menu.config.audio)
-    menu_items.push(menu.config.control)
+    menu.devices.map((device) => { menu_items.push(device) })
+    menu_items.push({ type: "separator" })
+    Object.keys(menu.config).map((item) => menu_items.push(menu.config[item]))
+    menu_items.push({ type: "separator" })
+    menu.actions.map((action) => { menu_items.push(action) })
     menu_items.push({ type: "separator" })
     menu_items.push({ label: "退出", role: "quit" })
 
@@ -48,134 +55,346 @@ function set_context_menu() {
 
 
 async function try_connect() {
-    if (net_selected === undefined) {
-        return
+    const config = await configuration()
+    if ((!net_selected && !config.usb) || !device_selected) {
+        return false
     }
 
-    menu.connect.label = connect_label.connecting
-    set_context_menu()
-    const connected = await connect(net_selected)
+    if (menu.connect.label !== connect_labels.connecting) {
+        menu.connect.label = connect_labels.connecting
+        set_context_menu()
+    }
+
+    const connected = await connect(device_selected)
     if (connected) {
-        menu.connect.label = connect_label.connected
+        if (config.usb) {
+            if (!config.memory_usb.includes(device_selected.id)) {
+                config.memory_usb.push(device_selected.id)
+            }
+        }
+        else {
+            if (!(net_selected.id in config.memory_net)) {
+                config.memory_net[net_selected.id] = [device_selected.id]
+            }
+            else if (!config.memory_net[net_selected.id].includes(device_selected.id)) {
+                config.memory_net[net_selected.id].push(device_selected.id)
+            }
+
+            config.lastest = net_selected.id
+        }
+        config.save()
+
+        menu.connect.label = connect_labels.connected
+        set_context_menu()
+        return true
     }
     else {
-        menu.connect.label = connect_label.disconnect
+        menu.connect.label = connect_labels.disconnect
+        set_context_menu()
+        return false
     }
-    set_context_menu()
-    return connected
 }
 
 
-async function create_tray() {
-    tray = new Tray(path.join(assets_path, "icon.png"))
-    tray.setToolTip("ScrcpyTray")
-    const nets = await find_nets()
-    const config = await config_setter()
-
-    function menu_config(id) {
-        return {
-            label: config_id[id],
-            type: "checkbox",
-            checked: config[id],
-            click: async () => {
-                logger.log(`clicked: video.`)
-                config[id] = !config[id]
-                config.save()
-                menu.config[id].checked = config[id]
-                set_context_menu()
-                if (menu.connect.label === connect_label.connected) {
-                    await try_connect()
-                }
-                else if (menu.connect.label === connect_label.connecting) {
-                    await disconnect()
-                    await try_connect()
-                }
-            }
-        }
+async function await_reconnect() {
+    if (reconnect) {
+        await new Promise((resolve) => {
+            reconnect_resolves.push(resolve)
+        })
     }
+}
 
+
+function set_menu_connect() {
     menu.connect = {
-        label: connect_label.connecting,
+        label: connect_labels.disconnect,
         click: async () => {
-            logger.log(`clicked: connect.`)
+            logger.log("clicked: connect.")
+            await await_reconnect()
             const label = menu.connect.label
-            if (retry) {
-                retry = false
-                await new Promise((resolve) => {
-                    retry_resolver = resolve
-                })
-                menu.connect.label = connect_label.disconnect
-                set_context_menu()
-                return
-            }
-            if (label === connect_label.disconnect) {
+            if (label === connect_labels.disconnect) {
                 await try_connect()
             }
-            else if (label === connect_label.connected || label === connect_label.connecting) {
-                menu.connect.label = connect_label.disconnect
+            else {
+                menu.connect.label = connect_labels.disconnect
                 set_context_menu()
                 await disconnect()
             }
         }
     }
+    logger.log("set menu connect done.")
+}
+
+
+async function set_menu_nets() {
+    menu.nets = []
+    const nets = await discover_nets()
+    const config = await configuration()
     for (const net of nets) {
         menu.nets.push({
             label: net.id,
             type: "radio",
             click: async () => {
                 logger.log(`clicked: ${net.id}.`)
-                menu.nets[net_selected.index].checked = false
+                await await_reconnect()
+                menu.connect.label = connect_labels.disconnect
+                set_context_menu()
+                menu.nets[net_selected_index].checked = false
                 menu.nets[net.index].checked = true
                 net_selected = net
+                net_selected_index = net.index
+                config.usb = false
+                config.save()
+
+                await disconnect()
+                await set_menu_devices()
                 await try_connect()
             }
         })
-    }
-    menu.config.video = menu_config("video")
-    menu.config.audio = menu_config("audio")
-    menu.config.control = menu_config("control")
 
-    for (const net of nets) {
-        net_selected = net
-        const connected = await try_connect()
-        if (connected) {
-            menu.nets[net.index].checked = true
-            break
+        if (!config.usb) {
+            if ((!net_selected && net.id in config.memory_net) || net.id === config.lastest) {
+                net_selected = net
+                net_selected_index = net.index
+            }
         }
     }
-    set_context_menu()
+    menu.nets.push({
+        label: "USB连接",
+        type: "radio",
+        click: async () => {
+            logger.log("clicked: select usb.")
+            await await_reconnect()
+            menu.nets[net_selected_index].checked = false
+            menu.nets[menu.nets.length - 2].checked = true
+            net_selected = undefined
+            net_selected_index = menu.nets.length - 2
+            config.usb = true
+            config.save()
 
+            await disconnect()
+            await set_menu_devices()
+            await try_connect()
+        }
+    })
+    menu.nets.push({
+        label: "断开网络",
+        type: "radio",
+        click: async () => {
+            logger.log("clicked: no net.")
+            await await_reconnect()
+            menu.nets[net_selected_index].checked = false
+            menu.nets[menu.nets.length - 1].checked = true
+            net_selected = undefined
+            net_selected_index = menu.nets.length - 1
+            config.usb = false
+            config.save()
+
+            menu.connect.label = connect_labels.disconnect
+            set_context_menu()
+            await disconnect()
+        }
+    })
+
+    if (!config.usb) {
+        if (net_selected === undefined && nets.length > 0) {
+            net_selected = nets[0]
+            net_selected_index = 0
+        }
+    }
+    else {
+        net_selected_index = menu.nets.length - 2
+    }
+    menu.nets[net_selected_index].checked = true
+    logger.log("set menu nets done.")
+}
+
+
+async function set_menu_devices() {
+    menu.devices = [
+        {
+            label: "查找中...",
+            enabled: false
+        }
+    ]
+    set_context_menu()
+    menu.devices = []
+    let devices = []
+    const config = await configuration()
+    if (config.usb) {
+        devices = await discover_devices_usb()
+        console.log(devices)
+    }
+    else if (net_selected) {
+        await adb_tcpip()
+        devices = await discover_devices(net_selected)
+    }
+    if (device_selected && !devices.includes(device_selected)) {
+        device_selected = undefined
+    }
+
+    for (const device of devices) {
+        menu.devices.push({
+            label: device.id,
+            type: "radio",
+            click: async () => {
+                logger.log(`clicked: ${device.id}.`)
+                await await_reconnect()
+                menu.devices[device_selected_index].checked = false
+                menu.devices[device.index].checked = true
+                device_selected = device
+                device_selected_index = device.index
+
+                await try_connect()
+            }
+        })
+
+        if (!device_selected) {
+            if ((config.usb && config.memory_usb.includes(device.id))
+                || (net_selected && net_selected.id in config.memory_net
+                    && config.memory_net[net_selected.id].includes(device.id))) {
+                device_selected = device
+            }
+        }
+    }
+    menu.devices.push({
+        label: "断开设备",
+        type: "radio",
+        click: async () => {
+            logger.log("clicked: no device.")
+            await await_reconnect()
+            menu.devices[device_selected_index].checked = false
+            menu.devices[menu.devices.length - 1].checked = true
+            device_selected = undefined
+            device_selected_index = menu.devices.length - 1
+
+            menu.connect.label = connect_labels.disconnect
+            set_context_menu()
+            await disconnect()
+        }
+    })
+
+    if (device_selected) {
+        device_selected_index = device_selected.index
+    }
+    else {
+        if (devices.length > 0) {
+            device_selected = devices[0]
+            device_selected_index = 0
+        }
+        else {
+            device_selected_index = menu.devices.length - 1
+        }
+    }
+    menu.devices[device_selected_index].checked = true
+    menu.connect.label = connect_labels.disconnect
+    set_context_menu()
+    logger.log("set menu devices done.")
+}
+
+
+async function set_menu_config() {
+    const config = await configuration()
+    for (const item of config_items) {
+        menu.config[item] = {
+            label: config_labels[item],
+            type: "checkbox",
+            checked: config[item],
+            click: async () => {
+                logger.log(`clicked: ${item}.`)
+                config[item] = !config[item]
+                config.save()
+                menu.config[item].checked = config[item]
+                set_context_menu()
+                if (reconnect) {
+                    return
+                }
+                if (menu.connect.label === connect_labels.connecting) {
+                    await disconnect()
+                    await try_connect()
+                }
+                else if (menu.connect.label === connect_labels.connected) {
+                    await try_connect()
+                }
+            }
+        }
+    }
+    logger.log("set menu config done.")
+}
+
+
+function set_menu_actions() {
+    menu.actions.push({
+        label: "播放/暂停",
+        click: async () => {
+            await controller.play()
+        }
+    })
+    logger.log("set menu actions done.")
+}
+
+
+async function create_tray() {
+    tray = new Tray(path.join(assets_path, "icon.png"))
+    tray.setToolTip("ScrcpyTray")
     tray.on("double-click", async () => {
         await disconnect()
         app.relaunch()
         app.exit(0)
     })
-}
 
-
-function controller_error_handler() {
-    retry = true
-    new Promise(async (resolve) => {
-        while (retry) {
-            const connected = await try_connect()
-            retry_resolver()
-            if (connected) {
-                break
-            }
-        }
-        resolve()
-    })
-}
-
-
-function killing_the_server_handler() {
-    menu.connect.label = connect_label.disconnect
+    set_menu_connect()
+    await set_menu_nets()
+    await set_menu_config()
+    set_menu_actions()
     set_context_menu()
+    await set_menu_devices()
+    await try_connect()
+}
+
+
+function device_disconnected_handler() {
+    menu.connect.label = connect_labels.disconnect
+    set_context_menu()
+}
+
+
+async function connection_lost_handler() {
+    const config = await configuration()
+    if (config.usb) {
+        await set_menu_devices()
+    }
+    else {
+        logger.log("start reconnect.")
+        reconnect = true
+        menu.connect.label = connect_labels.connecting
+        set_context_menu()
+        new Promise(async (resolve) => {
+            while (reconnect) {
+                const devices = await discover_devices({ cidr: device_selected.id })
+                let connected = false
+                if (devices.length > 0) {
+                    connected = await try_connect()
+                }
+                if (reconnect_resolves.length > 0 || connected) {
+                    logger.log("stop reconnect.")
+                    for (const reconnect_resolve of reconnect_resolves) {
+                        reconnect_resolve()
+                    }
+                    reconnect_resolves.length = 0
+                    reconnect = false
+                    resolve()
+                }
+
+                await sleep(reconnect_interval)
+            }
+        })
+    }
 }
 
 
 module.exports = {
     create_tray,
-    controller_error_handler,
-    killing_the_server_handler
+    device_disconnected_handler,
+    connection_lost_handler
 }

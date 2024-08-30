@@ -1,3 +1,12 @@
 video: true
 audio: true
-control: true
+buffer: true
+usb: false
+lastest: 以太网 4
+memory_net:
+  以太网 4:
+    - 192.168.10.219
+  WLAN:
+    - 192.168.12.107
+memory_usb:
+  - 10AE741EH9000RN

@@ -1,6 +1,6 @@
 const { app } = require('electron');
-const { create_tray, controller_error_handler, killing_the_server_handler } = require('./src/tray.js');
-const { disconnect } = require('./src/utils/net.js');
+const { create_tray, device_disconnected_handler, connection_lost_handler } = require('./src/tray.js');
+const { disconnect } = require('./src/utils/connect.js');
 
 
 app.on('ready', () => {
@@ -13,16 +13,16 @@ app.on('window-all-closed', (event) => {
 })
 
 
-app.on("controller_error", async () => {
-    await controller_error_handler()
+app.on("device_disconnected", async () => {
+    await device_disconnected_handler()
 })
 
 
-app.on("killing_the_server", () => {
-    killing_the_server_handler()
+app.on("connection_lost", async () => {
+    await connection_lost_handler()
 })
 
 
-app.on("before-quit", async (event) => {
+app.on("before-quit", async () => {
     await disconnect()
 })

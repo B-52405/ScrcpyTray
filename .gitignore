@@ -1,7 +1,6 @@
-node_modules
-.vscode/*
-.VSCodeCounter
-.github
-out
-bin
-test
+node_modules/
+.VSCodeCounter/
+.github/
+out/
+test/
+config.yaml
