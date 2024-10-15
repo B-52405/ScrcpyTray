@@ -1,13 +1,11 @@
 const path = require('path');
 const { command } = require("./command.js");
 const { Logger } = require('./log.js');
+const { statics } = require('../statics.js');
 
 
-const bin_path = path.join(__dirname, "..", "..", "bin")
-const nmap_path = path.join(bin_path, "Nmap", "nmap.exe")
-const adb_path = path.join(bin_path, "scrcpy-win64-v2.5", "adb.exe")
 const prefix_mask = { 0: 0, 128: 1, 192: 2, 224: 3, 240: 4, 248: 5, 252: 6, 254: 7, 255: 8 }
-const logger = new Logger("discover.js")
+const logger = new Logger(path.basename(__filename))
 
 
 async function discover_nets() {
@@ -31,16 +29,16 @@ async function discover_nets() {
 
 
 async function discover_devices(net) {
-    const nmap = await command(`${nmap_path} -p 5555 ${net.cidr}`)
+    const nmap = await command(`${statics.path.nmap} -p 5555 ${net.cidr}`)
     logger.log("nmap -p 5555 done.")
     const lines = nmap.split("\r\n")
     const devices = []
     for (let i = 5; i < lines.length; i += 7) {
         if (lines[i].match(/5555\/tcp open/)) {
-            const line = lines[i - 4].split(" ")
+            const ip = lines[i - 4].match(/\d+\.\d+\.\d+\.\d+/)[0]
             devices.push({
-                id: line[line.length - 1],
-                serial: `${line[line.length - 1]}:5555`,
+                id: ip,
+                serial: `${ip}:5555`,
                 index: devices.length
             })
         }
@@ -50,7 +48,7 @@ async function discover_devices(net) {
 
 
 async function discover_devices_adb() {
-    const adb_devices = await command(`${adb_path} devices`)
+    const adb_devices = await command(`${statics.path.adb} devices`)
     const devices_adb = adb_devices.split("\r\n").slice(1, -2).map((device) => device.split("\t"))
     const devices = []
     for (const device of devices_adb) {
@@ -74,7 +72,7 @@ async function discover_devices_usb() {
 async function adb_tcpip() {
     const devices = await discover_devices_usb()
     for (const device of devices) {
-        await command(`${adb_path} -s ${device.serial} tcpip 5555`)
+        await command(`${statics.path.adb} -s ${device.serial} tcpip 5555`)
     }
 }
 

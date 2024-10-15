@@ -5,9 +5,10 @@ const { connect, disconnect, controller } = require("./utils/connect.js");
 const { discover_nets, discover_devices_usb, discover_devices, adb_tcpip } = require("./utils/discover.js");
 const { Logger } = require("./utils/log.js");
 const { sleep } = require("./utils/sleep.js");
+const { notification } = require("./notification.js");
+const { statics } = require("./statics.js");
 
 
-const assets_path = path.join(__dirname, "..", "assets")
 let net_selected = undefined
 let net_selected_index = 0
 let device_selected = undefined
@@ -20,9 +21,9 @@ const config_labels = {
     buffer: "缓冲"
 }
 const connect_labels = {
-    disconnect: "未连接",
-    connecting: "连接中",
-    connected: "已连接"
+    disconnect: "未连接    ",
+    connecting: "连接中    ",
+    connected: "已连接    "
 }
 const menu = {
     connect: undefined,
@@ -34,7 +35,7 @@ const menu = {
 let reconnect = false
 const reconnect_resolves = []
 const reconnect_interval = 1000
-const logger = new Logger("tray.js")
+const logger = new Logger(path.basename(__filename))
 
 
 function set_context_menu() {
@@ -67,6 +68,9 @@ async function try_connect() {
 
     const connected = await connect(device_selected)
     if (connected) {
+        if (config.notification) {
+            notification("已连接", device_selected.id)
+        }
         if (config.usb) {
             if (!config.memory_usb.includes(device_selected.id)) {
                 config.memory_usb.push(device_selected.id)
@@ -89,6 +93,9 @@ async function try_connect() {
         return true
     }
     else {
+        if (config.notification && !reconnect) {
+            notification("连接失败", device_selected.id)
+        }
         menu.connect.label = connect_labels.disconnect
         set_context_menu()
         return false
@@ -191,7 +198,7 @@ async function set_menu_nets() {
             config.save()
 
             menu.connect.label = connect_labels.disconnect
-            set_context_menu()
+            await set_menu_devices()
             await disconnect()
         }
     })
@@ -335,8 +342,8 @@ function set_menu_actions() {
 
 
 async function create_tray() {
-    tray = new Tray(path.join(assets_path, "icon.png"))
-    tray.setToolTip("ScrcpyTray")
+    tray = new Tray(path.join(statics.path.assets, "icon.png"))
+    tray.setToolTip(statics.string.app)
     tray.on("double-click", async () => {
         await disconnect()
         app.relaunch()
@@ -362,10 +369,16 @@ function device_disconnected_handler() {
 async function connection_lost_handler() {
     const config = await configuration()
     if (config.usb) {
-        await set_menu_devices()
+        set_menu_devices()
+        if (config.notification) {
+            notification("设备断开", device_selected.id)
+        }
     }
     else {
         logger.log("start reconnect.")
+        if (config.notification) {
+            notification("正在重连……", device_selected.id)
+        }
         reconnect = true
         menu.connect.label = connect_labels.connecting
         set_context_menu()

@@ -3,6 +3,9 @@ const { create_tray, device_disconnected_handler, connection_lost_handler } = re
 const { disconnect } = require('./src/utils/connect.js');
 
 
+app.setAppUserModelId("ScrcpyTray");
+
+
 app.on('ready', () => {
     create_tray()
 })

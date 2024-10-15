@@ -5,14 +5,12 @@ const { command } = require("./command.js");
 const { configuration } = require('./config.js');
 const { discover_devices_adb } = require('./discover.js');
 const { Logger } = require('./log.js');
+const { statics } = require('../statics.js');
 
 
 let scrcpy = undefined
 let device_serial = ""
-const bin_path = path.join(__dirname, "..", "..", "bin")
-const scrcpy_path = path.join(bin_path, "scrcpy-win64-v2.5", "scrcpy.exe")
-const adb_path = path.join(bin_path, "scrcpy-win64-v2.5", "adb.exe")
-const logger = new Logger("connect.js")
+const logger = new Logger(path.basename(__filename))
 
 
 async function disconnect() {
@@ -22,7 +20,7 @@ async function disconnect() {
         scrcpy = undefined
     }
     if (device_serial !== "") {
-        await command(`${adb_path} disconnect ${device_serial}`)
+        await command(`${statics.path.adb} disconnect ${device_serial}`)
         device_serial = ""
     }
 }
@@ -40,10 +38,10 @@ async function connect(device) {
 
     const args = config.args()
     if (config.usb) {
-        scrcpy = exec(`${scrcpy_path} --serial=${device.serial} ${args}`)
+        scrcpy = exec(`${statics.path.scrcpy} --serial=${device.serial} ${args}`)
     }
     else {
-        scrcpy = exec(`${scrcpy_path} --tcpip=${device.serial} ${args}`)
+        scrcpy = exec(`${statics.path.scrcpy} --tcpip=${device.serial} ${args}`)
     }
 
     return await new Promise(resolve => {
@@ -89,7 +87,7 @@ async function connect(device) {
 const controller = {
     play: async () => {
         if (scrcpy && device_serial !== "") {
-            await command(`${adb_path} -s ${device_serial} shell input keyevent 85`)
+            await command(`${statics.path.adb} -s ${device_serial} shell input keyevent 85`)
         }
     }
 }

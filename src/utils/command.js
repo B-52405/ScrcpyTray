@@ -1,11 +1,12 @@
 const { exec } = require('child_process');
 const iconv = require('iconv-lite');
 const { promisify } = require('util');
+const path = require('path');
 const { Logger } = require('./log.js');
 
 
 const exec_promise = promisify(exec)
-const logger = new Logger("command.js")
+const logger = new Logger(path.basename(__filename))
 
 
 async function command(command, encoding = "gbk") {

@@ -1,35 +1,28 @@
-const path = require('path');
 const { read_yaml, write_yaml } = require('./yaml.js');
-
-
-const config_path = path.join(__dirname, "..", "..", "config.yaml")
-const buffer_size = 1000
-const video_buffer = ` --display-buffer=${buffer_size}`
-const audio_buffer = ` --audio-buffer=${buffer_size}`
+const { statics } = require('../statics.js');
 
 
 class Config {
     video = true
     audio = true
-    buffer = false
     usb = false
     lastest = undefined
     memory_net = {}
     memory_usb = []
+    buffer = false
+    buffer_size = statics.config.buffer_size
+    notification = statics.config.notification
 
     async load() {
-        const config_data = await read_yaml(config_path)
+        const config_data = await read_yaml(statics.path.config)
         if ("video" in config_data) {
-            this.video = config_data.video == true
+            this.video = config_data.video === true
         }
         if ("audio" in config_data) {
-            this.audio = config_data.audio == true
-        }
-        if ("buffer" in config_data) {
-            this.buffer = config_data.buffer == true
+            this.audio = config_data.audio === true
         }
         if ("usb" in config_data) {
-            this.usb = config_data.usb == true
+            this.usb = config_data.usb === true
         }
         if ("lastest" in config_data) {
             this.lastest = config_data.lastest
@@ -40,10 +33,25 @@ class Config {
         if ("memory_usb" in config_data) {
             this.memory_usb = config_data.memory_usb
         }
+        if ("buffer" in config_data) {
+            this.buffer = config_data.buffer === true
+        }
+        if ("buffer_size" in config_data) {
+            if (Number.isInteger(config_data.buffer_size)) {
+                //buffer size: [0, 3600000]
+                this.buffer_size = Math.max(0, Math.min(2000, config_data.buffer_size))
+            }
+            else {
+                this.buffer_size = 1000
+            }
+        }
+        if ("notification" in config_data) {
+            this.notification = config_data.notification === true
+        }
     }
 
     async save() {
-        await write_yaml(config_path, this)
+        await write_yaml(statics.path.config, this)
     }
 
     args() {
@@ -59,10 +67,10 @@ class Config {
         }
         if (this.buffer) {
             if (this.video) {
-                args += video_buffer
+                args += ` --display-buffer=${this.buffer_size}`
             }
             if (this.audio) {
-                args += audio_buffer
+                args += ` --audio-buffer=${this.buffer_size}`
             }
         }
         return args
